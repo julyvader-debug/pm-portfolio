@@ -1,0 +1,5 @@
+{
+  "ship_if": "calculation_accuracy 5/5 on 100% of cases, hallucination 5/5 on 100% of cases, null_handling avg >= 4.5, anomaly_detection avg >= 4.0, output_format avg >= 4.0, zero Critical failures across all test cases",
+  "iterate_if": "calculation_accuracy below 5/5 on any single case, or hallucination below 5 on any case, or null_handling avg below 4.0, or anomaly_detection avg below 3.5",
+  "pivot_if": "calculation_accuracy averages below 4.0 after two prompt iterations, or model fabricates acquisition costs, unit counts, or fee values on adversarial inputs after two prompt iterations"
+}

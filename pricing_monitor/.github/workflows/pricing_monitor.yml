@@ -1,0 +1,63 @@
+name: Weekly Pricing Run
+
+on:
+  schedule:
+    - cron: "0 4 * * 1"   # Monday 4:00am UTC
+  workflow_dispatch:        # manual trigger from GitHub UI
+    inputs:
+      run_date:
+        description: "Run date (YYYY-MM-DD). Leave blank for today."
+        required: false
+        default: ""
+
+jobs:
+  pricing-run:
+    name: Scrape, Extract & Analyze
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # needed for git push of pricing.db
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install Python dependencies
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright Chromium
+        run: playwright install chromium --with-deps
+
+      - name: Run pricing monitor
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "${{ github.event.inputs.run_date }}" ]; then
+            python -m pricing_monitor run --date "${{ github.event.inputs.run_date }}"
+          else
+            python -m pricing_monitor run
+          fi
+
+      - name: Upload run artifacts
+        if: always()   # preserve partial results even if the run step failed
+        uses: actions/upload-artifact@v4
+        with:
+          name: pricing-run-${{ github.run_id }}
+          path: data/runs/
+          retention-days: 90
+
+      - name: Commit updated database
+        # Only commit if the run succeeded (exit code 0 from the run step)
+        if: success()
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/pricing.db
+          # Only commit if there are staged changes
+          git diff --cached --quiet || git commit -m "chore: update pricing.db [skip ci]"
+          git push

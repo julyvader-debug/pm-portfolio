@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>PMT — Competitive Pricing Monitor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Mono:wght@300;400;500&display=swap" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:        #0b0c10;
+    --surface:   #111318;
+    --surface2:  #181a21;
+    --border:    #1f2230;
+    --border2:   #2a2d3e;
+    --text:      #e2dfd8;
+    --muted:     #6b6f82;
+    --accent:    #c9960a;
+    --accent-lt: #f0b429;
+    --up:        #2ecc71;
+    --down:      #e74c3c;
+    --neutral:   #6b6f82;
+    --chewy:     #0077cc;
+    --petmeds:   #cc2200;
+    --vs:        #c9960a;
+    --high:      #27ae60;
+    --medium:    #e67e22;
+    --low:       #c0392b;
+    --r:         6px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 13px;
+    line-height: 1.6;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ─────────────────────────────────────── */
+  .header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 20px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--surface);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+  .header-left { display: flex; align-items: center; gap: 20px; }
+  .logo-dot {
+    width: 10px; height: 10px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 12px var(--accent);
+    flex-shrink: 0;
+  }
+  .logo-text {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+  .logo-sub {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    margin-left: 2px;
+  }
+  .header-meta {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+  .run-badge {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .run-badge span { color: var(--text); font-weight: 500; }
+  .refresh-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: var(--accent);
+    color: #000;
+    border: none;
+    padding: 8px 16px;
+    border-radius: var(--r);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: 0.06em;
+    transition: opacity 0.15s;
+  }
+  .refresh-btn:hover { opacity: 0.85; }
+  .refresh-btn svg { width: 12px; height: 12px; }
+
+  /* ── WORKFLOW STEPS BAR ──────────────────────────── */
+  .workflow-bar {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    padding: 0 32px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    overflow-x: auto;
+  }
+  .wf-step {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 20px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    transition: color 0.15s;
+    white-space: nowrap;
+    border-bottom: 2px solid transparent;
+    position: relative;
+  }
+  .wf-step:hover { color: var(--text); }
+  .wf-step.active {
+    color: var(--accent-lt);
+    border-bottom-color: var(--accent);
+  }
+  .wf-num {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: var(--border2);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+    flex-shrink: 0;
+  }
+  .wf-step.active .wf-num {
+    background: var(--accent);
+    color: #000;
+  }
+  .wf-step.done .wf-num {
+    background: var(--high);
+    color: #000;
+  }
+  .wf-arrow {
+    width: 16px; height: 1px;
+    background: var(--border2);
+    flex-shrink: 0;
+  }
+
+  /* ── MAIN LAYOUT ─────────────────────────────────── */
+  .main { padding: 28px 32px; max-width: 1400px; margin: 0 auto; }
+
+  /* ── KPI TILES ───────────────────────────────────── */
+  .kpi-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .kpi-tile {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .kpi-tile::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+  }
+  .kpi-tile.chewy::before   { background: var(--chewy); }
+  .kpi-tile.petmeds::before { background: var(--petmeds); }
+  .kpi-tile.vs::before      { background: var(--vs); }
+  .kpi-tile.quality::before { background: var(--high); }
+  .kpi-label {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 10px;
+  }
+  .kpi-value {
+    font-family: 'Syne', sans-serif;
+    font-size: 26px;
+    font-weight: 700;
+    color: var(--text);
+    line-height: 1;
+    margin-bottom: 8px;
+  }
+  .kpi-delta {
+    font-size: 11px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .kpi-delta.up   { color: var(--up); }
+  .kpi-delta.down { color: var(--down); }
+  .kpi-delta.flat { color: var(--muted); }
+  .kpi-sub { font-size: 10px; color: var(--muted); margin-top: 4px; }
+  .conf-bar {
+    display: flex;
+    gap: 3px;
+    margin-top: 8px;
+  }
+  .conf-seg {
+    height: 4px;
+    border-radius: 2px;
+    flex: 1;
+    background: var(--border2);
+  }
+  .conf-seg.filled { background: var(--high); }
+  .conf-seg.warn   { background: var(--medium); }
+
+  /* ── SECTION HEADERS ─────────────────────────────── */
+  .section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+  }
+  .section-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--text);
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .section-title::before {
+    content: '';
+    display: block;
+    width: 3px; height: 14px;
+    background: var(--accent);
+    border-radius: 2px;
+  }
+  .section-tag {
+    font-size: 10px;
+    background: var(--surface2);
+    border: 1px solid var(--border2);
+    padding: 3px 8px;
+    border-radius: 3px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .filter-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .filter-btn {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    border: 1px solid var(--border2);
+    background: transparent;
+    color: var(--muted);
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.04em;
+  }
+  .filter-btn.active, .filter-btn:hover {
+    background: var(--surface2);
+    color: var(--text);
+    border-color: var(--border2);
+  }
+
+  /* ── COMPARISON TABLE ────────────────────────────── */
+  .table-wrap {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    margin-bottom: 28px;
+    overflow: hidden;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    padding: 12px 16px;
+    text-align: left;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    background: var(--surface2);
+    border-bottom: 1px solid var(--border);
+    font-weight: 400;
+  }
+  thead th.center { text-align: center; }
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+  tbody tr:last-child { border-bottom: none; }
+  tbody tr:hover { background: var(--surface2); }
+  td {
+    padding: 14px 16px;
+    vertical-align: middle;
+  }
+  .product-cell { min-width: 200px; }
+  .product-name {
+    font-weight: 500;
+    color: var(--text);
+    font-size: 12px;
+    margin-bottom: 2px;
+  }
+  .product-cat {
+    font-size: 10px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .price-cell { text-align: center; }
+  .price-main {
+    font-family: 'Syne', sans-serif;
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+  }
+  .price-sub {
+    font-size: 10px;
+    color: var(--muted);
+    margin-top: 1px;
+  }
+  .price-sub.sale { color: var(--up); }
+  .price-sub.sub-price { color: #7b9ccc; }
+  .delta-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    margin-top: 4px;
+  }
+  .delta-badge.up   { background: rgba(46,204,113,0.1); color: var(--up); }
+  .delta-badge.down { background: rgba(231,76,60,0.1);  color: var(--down); }
+  .delta-badge.flat { background: var(--surface2);      color: var(--muted); }
+  .conf-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 3px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+  .conf-badge.high   { background: rgba(39,174,96,0.12);  color: #2ecc71; border: 1px solid rgba(39,174,96,0.2); }
+  .conf-badge.medium { background: rgba(230,126,34,0.12); color: #e67e22; border: 1px solid rgba(230,126,34,0.2); }
+  .conf-badge.low    { background: rgba(192,57,43,0.12);  color: #e74c3c; border: 1px solid rgba(192,57,43,0.2); }
+  .stock-dot {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    margin-right: 5px;
+  }
+  .stock-dot.in  { background: var(--up); }
+  .stock-dot.out { background: var(--down); }
+  .winner-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 9px;
+    padding: 2px 7px;
+    border-radius: 3px;
+    background: rgba(201,150,10,0.12);
+    color: var(--accent-lt);
+    border: 1px solid rgba(201,150,10,0.2);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+  .sparkline-cell { width: 100px; }
+  canvas.sparkline { display: block; }
+
+  /* ── CHART SECTION ───────────────────────────────── */
+  .chart-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr;
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .chart-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 20px;
+  }
+  .chart-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 20px;
+  }
+  .chart-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--text);
+  }
+  .chart-legend {
+    display: flex;
+    gap: 16px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .legend-dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── SKU DETAIL TABLE ────────────────────────────── */
+  .sku-detail-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 20px;
+    overflow-y: auto;
+  }
+  .sku-rows { display: flex; flex-direction: column; gap: 10px; }
+  .sku-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 12px;
+    background: var(--surface2);
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    transition: border-color 0.15s;
+    cursor: pointer;
+  }
+  .sku-row:hover { border-color: var(--border2); }
+  .sku-row.winner { border-color: rgba(201,150,10,0.3); }
+  .sku-name { font-size: 11px; color: var(--text); font-weight: 500; }
+  .sku-comp {
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+  .sku-comp.chewy   { background: rgba(0,119,204,0.15); color: #5aabf0; }
+  .sku-comp.petmeds { background: rgba(204,34,0,0.15);  color: #f07070; }
+  .sku-comp.vs      { background: rgba(201,150,10,0.15); color: var(--accent-lt); }
+  .sku-price {
+    font-family: 'Syne', sans-serif;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  /* ── FINDINGS ────────────────────────────────────── */
+  .findings-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .finding-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 18px;
+  }
+  .finding-icon {
+    width: 28px; height: 28px;
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px;
+    margin-bottom: 12px;
+  }
+  .finding-icon.warn  { background: rgba(230,126,34,0.15); }
+  .finding-icon.info  { background: rgba(0,119,204,0.15); }
+  .finding-icon.check { background: rgba(39,174,96,0.15); }
+  .finding-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 6px;
+  }
+  .finding-body {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .finding-body strong { color: var(--text); }
+
+  /* ── VPD PANEL ───────────────────────────────────── */
+  .vpd-panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 20px;
+    margin-bottom: 28px;
+    border-left: 3px solid var(--accent);
+  }
+  .vpd-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-top: 16px;
+  }
+  .vpd-item { text-align: center; }
+  .vpd-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: var(--muted);
+    margin-bottom: 6px;
+  }
+  .vpd-val {
+    font-family: 'Syne', sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--text);
+  }
+  .vpd-val.accent { color: var(--accent-lt); }
+  .vpd-sub { font-size: 10px; color: var(--muted); margin-top: 2px; }
+  .vpd-divider {
+    width: 1px;
+    background: var(--border);
+    align-self: stretch;
+    margin: 0 4px;
+  }
+
+  /* ── FOOTER STEPS ────────────────────────────────── */
+  .review-flow {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .flow-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r);
+    padding: 16px;
+    position: relative;
+  }
+  .flow-card::after {
+    content: '→';
+    position: absolute;
+    right: -12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--border2);
+    font-size: 14px;
+    z-index: 1;
+  }
+  .flow-card:last-child::after { display: none; }
+  .flow-step-num {
+    font-size: 9px;
+    color: var(--accent);
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+    font-weight: 500;
+  }
+  .flow-step-title {
+    font-family: 'Syne', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  .flow-step-body {
+    font-size: 11px;
+    color: var(--muted);
+    line-height: 1.65;
+  }
+  .flow-card.active-step {
+    border-color: rgba(201,150,10,0.4);
+    background: rgba(201,150,10,0.04);
+  }
+
+  /* ── SCROLLBAR ───────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+
+  /* ── DIVIDER ─────────────────────────────────────── */
+  .divider { height: 1px; background: var(--border); margin: 0 0 28px; }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header class="header">
+  <div class="header-left">
+    <div class="logo-dot"></div>
+    <div>
+      <div class="logo-text">PMT <span style="color:var(--muted);font-weight:400;">/ Competitive Pricing</span></div>
+      <div class="logo-sub">Pricing Management Tool · Competitor Monitor</div>
+    </div>
+  </div>
+  <div class="header-meta">
+    <div class="run-badge">Run date <span>2026-05-07</span></div>
+    <div class="run-badge">Products <span>2</span></div>
+    <div class="run-badge">Competitors <span>3</span></div>
+    <button class="refresh-btn">
+      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 8A6 6 0 1 1 8 2"/>
+        <polyline points="14 2 14 8 8 8"/>
+      </svg>
+      Run Extract
+    </button>
+  </div>
+</header>
+
+<!-- WORKFLOW BAR (from newpmt.pdf page 25 — Competitive Review flow) -->
+<div class="workflow-bar">
+  <div class="wf-step done">
+    <div class="wf-num">✓</div>PMT Refresh
+  </div>
+  <div class="wf-arrow"></div>
+  <div class="wf-step done">
+    <div class="wf-num">✓</div>Product/Size Match
+  </div>
+  <div class="wf-arrow"></div>
+  <div class="wf-step active">
+    <div class="wf-num">3</div>Review Confidence
+  </div>
+  <div class="wf-arrow"></div>
+  <div class="wf-step">
+    <div class="wf-num">4</div>Available for Comparison
+  </div>
+  <div style="flex:1"></div>
+  <div class="wf-step" style="color:var(--muted);font-size:10px;">
+    Last run: 2026-05-07 06:00 UTC
+  </div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- KPI TILES -->
+  <div class="kpi-grid">
+    <div class="kpi-tile chewy">
+      <div class="kpi-label">Chewy — NexGard 10-24lb</div>
+      <div class="kpi-value">$152</div>
+      <div class="kpi-delta down">▼ $3.00 vs last week</div>
+      <div class="kpi-sub">Subscription available · In stock</div>
+    </div>
+    <div class="kpi-tile petmeds">
+      <div class="kpi-label">PetMeds — NexGard 10-24lb</div>
+      <div class="kpi-value">$158</div>
+      <div class="kpi-delta down">▼ $2.00 vs last week</div>
+      <div class="kpi-sub">Standard only · In stock</div>
+    </div>
+    <div class="kpi-tile vs">
+      <div class="kpi-label">Our Store — NexGard 10-24lb</div>
+      <div class="kpi-value">$173</div>
+      <div class="kpi-delta down">▼ $2.00 vs last week</div>
+      <div class="kpi-sub">Practice price · In stock</div>
+    </div>
+    <div class="kpi-tile quality">
+      <div class="kpi-label">Data Quality This Run</div>
+      <div class="kpi-value">5<span style="font-size:16px;font-weight:400;color:var(--muted)">/6</span></div>
+      <div class="conf-bar">
+        <div class="conf-seg filled"></div>
+        <div class="conf-seg filled"></div>
+        <div class="conf-seg filled"></div>
+        <div class="conf-seg filled"></div>
+        <div class="conf-seg filled"></div>
+        <div class="conf-seg warn"></div>
+      </div>
+      <div class="kpi-sub">1 low-confidence extraction</div>
+    </div>
+  </div>
+
+  <!-- VPD INSIGHT PANEL (from newpmt.pdf page 22 — VPD per-unit cost display) -->
+  <div class="vpd-panel">
+    <div class="section-header" style="margin-bottom:0">
+      <div class="section-title" style="font-size:11px">VPD Per-Unit Breakdown · NexGard 10-24lbs 6-pack</div>
+      <div class="section-tag">VPD Calculator</div>
+    </div>
+    <div class="vpd-grid">
+      <div class="vpd-item">
+        <div class="vpd-label">Package Cost (VS)</div>
+        <div class="vpd-val">$102.00</div>
+        <div class="vpd-sub">Acquisition cost</div>
+      </div>
+      <div class="vpd-divider"></div>
+      <div class="vpd-item">
+        <div class="vpd-label">Units / Package</div>
+        <div class="vpd-val">6</div>
+        <div class="vpd-sub">Chewables</div>
+      </div>
+      <div class="vpd-divider"></div>
+      <div class="vpd-item">
+        <div class="vpd-label">Per-Unit Cost</div>
+        <div class="vpd-val accent">$17.00</div>
+        <div class="vpd-sub">÷ 6 units</div>
+      </div>
+      <div class="vpd-divider"></div>
+      <div class="vpd-item">
+        <div class="vpd-label">Chewy Per-Unit</div>
+        <div class="vpd-val">$25.33</div>
+        <div class="vpd-sub">$152 ÷ 6</div>
+      </div>
+      <div class="vpd-divider"></div>
+      <div class="vpd-item">
+        <div class="vpd-label">Price Gap vs Chewy</div>
+        <div class="vpd-val" style="color:var(--up)">+$8.33</div>
+        <div class="vpd-sub">Per unit · in our favor</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- PRODUCT COMPARISON TABLE -->
+  <div class="section-header">
+    <div class="section-title">Product Comparison</div>
+    <div class="filter-row">
+      <button class="filter-btn active">All</button>
+      <button class="filter-btn">Flea &amp; Tick</button>
+      <button class="filter-btn">Topical</button>
+      <div class="section-tag">6 records · 2026-05-07</div>
+    </div>
+  </div>
+
+  <div class="table-wrap" style="margin-bottom:28px">
+    <table>
+      <thead>
+        <tr>
+          <th>Product</th>
+          <th class="center">Chewy</th>
+          <th class="center">PetMeds</th>
+          <th class="center">Our Store</th>
+          <th class="center">Best Market Price</th>
+          <th class="center">In Stock</th>
+          <th class="center">Confidence</th>
+          <th>8-Week Trend</th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- NexGard -->
+        <tr>
+          <td class="product-cell">
+            <div class="product-name">NexGard 10-24lbs 6-pack</div>
+            <div class="product-cat">Flea &amp; Tick · Oral</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$152.00</div>
+            <div class="price-sub sub-price">$138 sub</div>
+            <div class="delta-badge down">▼ $3.00</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$158.00</div>
+            <div class="price-sub">Standard only</div>
+            <div class="delta-badge down">▼ $2.00</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$173.00</div>
+            <div class="price-sub">Practice price</div>
+            <div class="delta-badge down">▼ $2.00</div>
+            <div class="winner-tag">Our SKU</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main" style="color:var(--chewy)">$138.00</div>
+            <div class="price-sub">Chewy sub</div>
+          </td>
+          <td class="price-cell">
+            <span class="stock-dot in"></span>All in stock
+          </td>
+          <td class="price-cell">
+            <div class="conf-badge high">● High</div>
+          </td>
+          <td class="sparkline-cell">
+            <canvas id="spark-nexgard" class="sparkline" width="100" height="36"></canvas>
+          </td>
+        </tr>
+        <!-- Frontline -->
+        <tr>
+          <td class="product-cell">
+            <div class="product-name">Frontline Plus Dogs 23-44lbs 6-pk</div>
+            <div class="product-cat">Flea &amp; Tick · Topical</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$71.00</div>
+            <div class="price-sub sale">$63 sale</div>
+            <div class="delta-badge up">▲ $1.00</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$68.00</div>
+            <div class="price-sub">Standard</div>
+            <div class="delta-badge up">▲ $1.00</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main">$80.00</div>
+            <div class="price-sub">Practice price</div>
+            <div class="delta-badge up">▲ $1.00</div>
+            <div class="winner-tag">Our SKU</div>
+          </td>
+          <td class="price-cell">
+            <div class="price-main" style="color:var(--petmeds)">$68.00</div>
+            <div class="price-sub">PetMeds std</div>
+          </td>
+          <td class="price-cell">
+            <span class="stock-dot in"></span>All in stock
+          </td>
+          <td class="price-cell">
+            <div class="conf-badge medium">● Medium</div>
+          </td>
+          <td class="sparkline-cell">
+            <canvas id="spark-frontline" class="sparkline" width="100" height="36"></canvas>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- TREND CHART + SKU RANKING -->
+  <div class="chart-grid">
+    <div class="chart-card">
+      <div class="chart-card-header">
+        <div class="chart-title">8-Week Price Trend — NexGard 10-24lbs</div>
+        <div class="chart-legend">
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--chewy)"></div>Chewy
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--petmeds)"></div>PetMeds
+          </div>
+          <div class="legend-item">
+            <div class="legend-dot" style="background:var(--vs)"></div>Our Store
+          </div>
+        </div>
+      </div>
+      <canvas id="trend-nexgard" height="90"></canvas>
+    </div>
+
+    <div class="sku-detail-card">
+      <div class="chart-card-header">
+        <div class="chart-title">Current Price Ranking</div>
+      </div>
+      <div class="sku-rows">
+        <div class="sku-row">
+          <div>
+            <div class="sku-name">NexGard 10-24lbs (Sub)</div>
+            <span class="sku-comp chewy">Chewy</span>
+          </div>
+          <div class="sku-price" style="color:var(--up)">$138.00</div>
+        </div>
+        <div class="sku-row">
+          <div>
+            <div class="sku-name">NexGard 10-24lbs (Std)</div>
+            <span class="sku-comp chewy">Chewy</span>
+          </div>
+          <div class="sku-price">$152.00</div>
+        </div>
+        <div class="sku-row">
+          <div>
+            <div class="sku-name">NexGard 10-24lbs (Std)</div>
+            <span class="sku-comp petmeds">PetMeds</span>
+          </div>
+          <div class="sku-price">$158.00</div>
+        </div>
+        <div class="sku-row winner">
+          <div>
+            <div class="sku-name">NexGard 10-24lbs (Practice)</div>
+            <span class="sku-comp vs">Our Store</span>
+          </div>
+          <div class="sku-price" style="color:var(--accent-lt)">$173.00</div>
+        </div>
+        <div style="height:1px;background:var(--border);margin:4px 0"></div>
+        <div class="sku-row">
+          <div>
+            <div class="sku-name">Frontline Plus 23-44lb</div>
+            <span class="sku-comp petmeds">PetMeds</span>
+          </div>
+          <div class="sku-price" style="color:var(--up)">$68.00</div>
+        </div>
+        <div class="sku-row">
+          <div>
+            <div class="sku-name">Frontline Plus 23-44lb</div>
+            <span class="sku-comp chewy">Chewy</span>
+          </div>
+          <div class="sku-price">$71.00</div>
+        </div>
+        <div class="sku-row winner">
+          <div>
+            <div class="sku-name">Frontline Plus 23-44lb (Practice)</div>
+            <span class="sku-comp vs">Our Store</span>
+          </div>
+          <div class="sku-price" style="color:var(--accent-lt)">$80.00</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- NOTABLE FINDINGS -->
+  <div class="section-header">
+    <div class="section-title">Notable Findings</div>
+    <div class="section-tag">AI Analysis · claude-sonnet-4-6</div>
+  </div>
+
+  <div class="findings-grid">
+    <div class="finding-card">
+      <div class="finding-icon warn">⚠</div>
+      <div class="finding-title">NexGard Competitive Gap Widening</div>
+      <div class="finding-body">
+        Chewy's NexGard standard price has dropped <strong>$16 over 8 weeks</strong> ($168 → $152). Our Store is now priced <strong>$21 above Chewy</strong> on standard. If Chewy's subscription ($138) is the reference point, the gap is $35. Monitor for impact on practice conversion.
+      </div>
+    </div>
+    <div class="finding-card">
+      <div class="finding-icon info">↔</div>
+      <div class="finding-title">Frontline Pricing Stable</div>
+      <div class="finding-body">
+        Frontline Plus 23-44lb has remained within a <strong>$3 range</strong> across all competitors over 8 weeks. PetMeds maintains the lowest standard price at $68. Our Store at $80 is <strong>$12 above PetMeds</strong> — within acceptable margin for practice-channel pricing.
+      </div>
+    </div>
+    <div class="finding-card">
+      <div class="finding-icon check">✓</div>
+      <div class="finding-title">VPD Unit Economics Favorable</div>
+      <div class="finding-body">
+        At an acquisition cost of $102 for the 6-pack, VS per-unit cost is <strong>$17.00</strong> vs Chewy's $25.33/unit. Per-unit margin remains strong. VPD line-level fee structure allows competitive practice pricing without compressing margin below floor.
+      </div>
+    </div>
+  </div>
+
+  <!-- COMPETITIVE REVIEW FLOW (from newpmt.pdf p.25) -->
+  <div class="section-header">
+    <div class="section-title">Competitive Review Workflow</div>
+    <div class="section-tag">PMT Flow · Step 4 of 4</div>
+  </div>
+  <div class="review-flow">
+    <div class="flow-card">
+      <div class="flow-step-num">Step 01</div>
+      <div class="flow-step-title">PMT Refreshes Data</div>
+      <div class="flow-step-body">
+        Automated scraper pulls prices from Chewy, PetMeds, and Our Store. Screenshots captured and stored per run date.
+        <br/><br/>
+        <span style="color:var(--up);font-size:10px;">✓ Completed · 2026-05-07 06:00</span>
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step-num">Step 02</div>
+      <div class="flow-step-title">Product/Size Matching</div>
+      <div class="flow-step-body">
+        SKU canonical names matched across competitors by product name and package size. Haiku extracts price variants (standard, sale, subscription).
+        <br/><br/>
+        <span style="color:var(--up);font-size:10px;">✓ Completed · 2 of 2 matched</span>
+      </div>
+    </div>
+    <div class="flow-card active-step">
+      <div class="flow-step-num">Step 03</div>
+      <div class="flow-step-title">Review Confidence</div>
+      <div class="flow-step-body">
+        Analyst reviews extraction confidence per product. High = 4 of 6 extractions. 1 medium (Frontline/PetMeds). 0 failures this run.
+        <br/><br/>
+        <span style="color:var(--accent-lt);font-size:10px;">⬤ Awaiting review</span>
+      </div>
+    </div>
+    <div class="flow-card">
+      <div class="flow-step-num">Step 04</div>
+      <div class="flow-step-title">Available for Comparison</div>
+      <div class="flow-step-body">
+        Once approved, data feeds into PMT calculator as competitive reference. Pricing team uses it for MAP validation and margin floor checks.
+        <br/><br/>
+        <span style="color:var(--muted);font-size:10px;">Pending step 03 approval</span>
+      </div>
+    </div>
+  </div>
+
+</div><!-- /main -->
+
+<script>
+/* ── CHART.JS DEFAULTS ──────────────────────────── */
+Chart.defaults.color = '#6b6f82';
+Chart.defaults.borderColor = '#1f2230';
+Chart.defaults.font.family = "'DM Mono', monospace";
+Chart.defaults.font.size = 10;
+
+const WEEKS = ['Mar 19','Mar 26','Apr 2','Apr 9','Apr 16','Apr 23','Apr 30','May 7'];
+
+/* ── TREND CHART — NEXGARD ──────────────────────── */
+new Chart(document.getElementById('trend-nexgard'), {
+  type: 'line',
+  data: {
+    labels: WEEKS,
+    datasets: [
+      {
+        label: 'Chewy',
+        data: [168, 165, 162, 160, 158, 155, 155, 152],
+        borderColor: '#0077cc',
+        backgroundColor: 'rgba(0,119,204,0.06)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: false,
+      },
+      {
+        label: 'PetMeds',
+        data: [172, 170, 168, 165, 165, 162, 160, 158],
+        borderColor: '#cc2200',
+        backgroundColor: 'rgba(204,34,0,0.06)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: false,
+      },
+      {
+        label: 'Our Store',
+        data: [185, 185, 183, 180, 180, 178, 175, 173],
+        borderColor: '#c9960a',
+        backgroundColor: 'rgba(201,150,10,0.06)',
+        borderWidth: 2,
+        pointRadius: 3,
+        pointHoverRadius: 5,
+        tension: 0.3,
+        fill: false,
+      },
+    ],
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: true,
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#141519',
+        borderColor: '#1f2230',
+        borderWidth: 1,
+        padding: 10,
+        titleFont: { family: "'Syne', sans-serif", size: 11, weight: '700' },
+        bodyFont: { family: "'DM Mono', monospace", size: 11 },
+        callbacks: {
+          label: ctx => ` ${ctx.dataset.label}: $${ctx.parsed.y.toFixed(2)}`
+        }
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: '#1a1c24' },
+        ticks: { font: { size: 10 } }
+      },
+      y: {
+        grid: { color: '#1a1c24' },
+        ticks: {
+          font: { size: 10 },
+          callback: v => `$${v}`
+        },
+        min: 140,
+        max: 200,
+      }
+    }
+  }
+});
+
+/* ── SPARKLINES ─────────────────────────────────── */
+function sparkline(id, data, color) {
+  new Chart(document.getElementById(id), {
+    type: 'line',
+    data: {
+      labels: WEEKS,
+      datasets: [{
+        data,
+        borderColor: color,
+        borderWidth: 1.5,
+        pointRadius: 0,
+        tension: 0.4,
+        fill: false,
+      }]
+    },
+    options: {
+      responsive: false,
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: {
+        x: { display: false },
+        y: { display: false }
+      },
+      animation: false,
+    }
+  });
+}
+
+// NexGard sparkline (Chewy trend)
+sparkline('spark-nexgard', [168,165,162,160,158,155,155,152], '#0077cc');
+// Frontline sparkline (Chewy trend)
+sparkline('spark-frontline', [72,70,72,71,70,69,70,71], '#cc2200');
+
+/* ── FILTER BUTTONS ─────────────────────────────── */
+document.querySelectorAll('.filter-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+});
+</script>
+</body>
+</html>

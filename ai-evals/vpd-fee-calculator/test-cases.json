@@ -1,0 +1,58 @@
+[
+  {
+    "id": "easy-01",
+    "description": "Clean input with a flat line-level fee and no parent MAP. Acquisition cost and units per package are both clean numbers. Should produce correct unit_cost, null map_per_unit, and correct wholesale_price with no anomaly flags.",
+    "difficulty": "easy",
+    "input_data": {
+      "sku_id": "RX-10042",
+      "product_name": "Atenolol 25mg Tablets - 30 count",
+      "acquisition_cost": 8.40,
+      "units_per_package": 30,
+      "parent_map_price": null,
+      "fee_type": "line_level",
+      "fee_value": 0.12
+    }
+  },
+  {
+    "id": "realistic-01",
+    "description": "Standard VPD scenario with a percentage fee and a parent MAP price. Should derive map_per_unit correctly, apply the 12% fee to unit_cost, and flag no anomalies since fee is within threshold.",
+    "difficulty": "realistic",
+    "input_data": {
+      "sku_id": "RX-20387",
+      "product_name": "Simparica Trio 5.6-11 lbs - 6 pack",
+      "acquisition_cost": 72.00,
+      "units_per_package": 6,
+      "parent_map_price": 84.00,
+      "fee_type": "percentage",
+      "fee_value": 12
+    }
+  },
+  {
+    "id": "hard-01",
+    "description": "Fee value is 30%, which exceeds the 25% anomaly threshold. Calculator should compute correctly AND return a populated anomaly_flags array identifying the over-threshold fee. Tests whether the model can calculate and flag simultaneously.",
+    "difficulty": "hard",
+    "input_data": {
+      "sku_id": "RX-30094",
+      "product_name": "Carprofen 75mg Chewable Tablets - 30 count",
+      "acquisition_cost": 42.00,
+      "units_per_package": 30,
+      "parent_map_price": 55.00,
+      "fee_type": "percentage",
+      "fee_value": 30
+    }
+  },
+  {
+    "id": "adversarial-01",
+    "description": "fee_type is provided but fee_value is null. Model must not fabricate a fee value. Should return a clear error identifying the missing field and return null for fee_applied, wholesale_price, and price_at_quantities. unit_cost and map_per_unit should still be calculated from the available data.",
+    "difficulty": "adversarial",
+    "input_data": {
+      "sku_id": "RX-40221",
+      "product_name": "Metronidazole 250mg Tablets - 60 count",
+      "acquisition_cost": 18.60,
+      "units_per_package": 60,
+      "parent_map_price": null,
+      "fee_type": "line_level",
+      "fee_value": null
+    }
+  }
+]

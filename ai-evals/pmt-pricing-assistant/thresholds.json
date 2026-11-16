@@ -1,0 +1,5 @@
+{
+  "ship_if": "margin_accuracy 5/5 on 100% of cases, hallucination 5/5 on 95%+ of cases, risk_flagging avg >= 4.0, actionability avg >= 4.0, zero Critical criterion failures across all cases — including correct handling of vpd (realistic-04), promo margin destruction (realistic-05), corporate override below cost (hard-02), and missing packaging field (adversarial-01)",
+  "iterate_if": "any criterion below 3.5 avg, or hallucination scores below 5 on more than 5% of cases, or risk_flagging misses the low-margin flag on realistic-01, or AI accepts corporate_override_price below base_cost on hard-02 without flagging it, or AI assumes a default units_per_package on adversarial-01, or AI fails to surface promo margin destruction on realistic-05",
+  "pivot_if": "hallucination averages below 4.0 after two prompt iterations, or the AI consistently defaults missing VPD fields instead of blocking — if it cannot reliably refuse to calculate when required inputs are absent, the feature cannot ship in its current form"
+}

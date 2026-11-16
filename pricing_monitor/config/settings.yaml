@@ -1,0 +1,14 @@
+browser:
+  concurrency: 3           # max simultaneous Playwright contexts (memory-bound ~300MB each)
+  timeout_ms: 5000         # wait for $ selector before screenshotting anyway
+
+api:
+  extraction_model: "claude-haiku-4-5-20251001"
+  analysis_model: "claude-sonnet-4-6"
+  extraction_concurrency: 5   # max simultaneous Anthropic API calls
+
+storage:
+  run_dir: "data/runs"
+  db_path: "data/pricing.db"
+  history_weeks: 8         # weeks of history sent to Sonnet for trend analysis
+  cleanup_after_weeks: 12  # screenshots/extractions older than this are deleted by cleanup cmd

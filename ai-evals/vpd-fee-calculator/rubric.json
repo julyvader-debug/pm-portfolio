@@ -1,0 +1,32 @@
+[
+  {
+    "criterion": "calculation_accuracy",
+    "weight": "Critical",
+    "five_out_of_five": "unit_cost, map_per_unit, fee_applied, and wholesale_price are all mathematically correct to 4 decimal places for every input provided.",
+    "one_out_of_five": "Core price calculations are wrong, missing, or use the wrong formula."
+  },
+  {
+    "criterion": "hallucination",
+    "weight": "Critical",
+    "five_out_of_five": "Zero fabricated costs, prices, or unit counts. When a field is null or missing, output explicitly states which field is absent and returns null for all dependent calculations.",
+    "one_out_of_five": "Invents acquisition costs, unit counts, fee values, or prices not present in the input data."
+  },
+  {
+    "criterion": "anomaly_detection",
+    "weight": "High",
+    "five_out_of_five": "Correctly flags all anomaly conditions (fee > 25% of unit cost; wholesale price per unit below acquisition cost per unit). Produces zero false positive flags on clean inputs.",
+    "one_out_of_five": "Misses real anomaly conditions or flags clean inputs incorrectly."
+  },
+  {
+    "criterion": "null_handling",
+    "weight": "High",
+    "five_out_of_five": "When parent_map_price is null, returns null for map_per_unit without error and continues all other calculations. When fee_value is null, returns a clear error message and nulls all fee-dependent fields without fabricating a fee.",
+    "one_out_of_five": "Fabricates values for null or missing fields, or crashes and returns no output when a field is absent."
+  },
+  {
+    "criterion": "output_format",
+    "weight": "Medium",
+    "five_out_of_five": "Response is valid JSON with all required fields present and correctly named. price_at_quantities contains entries for quantities 1, 30, and 90. anomaly_flags is an array (empty array if no anomalies).",
+    "one_out_of_five": "Invalid JSON, missing required fields, wrong field names, or price_at_quantities is incomplete."
+  }
+]

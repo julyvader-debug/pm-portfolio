@@ -1,0 +1,896 @@
+PRD | ID-PMT-v3 | Pricing Management Tool (PMT) — New Build
+Version 3.0 | April 23, 2026
+Author: Monic, Senior Technical Product Manager (consulting engagement, veterinary e-commerce)
+Stakeholders: Pricing Lead, Pricing Manager, Pricing Ops, Engineering
+
+================================================================================
+1. OVERVIEW
+================================================================================
+
+Vision
+------
+Replace the fragmented, spreadsheet-dependent pricing workflow with a
+centralized Pricing Management Tool that connects directly to live data sources,
+eliminates hard coding, and gives every role — Sales, Pricing, and Ops — a
+structured, governed path from intake to published price.
+
+TL;DR
+-----
+Today, pricing is built on replicated data-warehouse tables, spreadsheet imports,
+and hard-coded overrides that break every time a manufacturer updates their base
+cost. The Pricing team only retains the last two prices per SKU. Sales submits
+requests outside the tool and Pricing reconstructs context from scratch.
+
+PMT v3 fixes all three layers:
+  - Layer 1: Data architecture — pull directly from source systems (ERP /
+    product catalog); no more replicated garbage tables; modular fee engine
+  - Layer 2: Intake and workflow — Sales intake built into the tool with
+    validation gates; structured review and approval with full audit trail
+  - Layer 3: Fee flexibility — support for VPD (Variable Pill Dosing),
+    line-level fees, future-dated pricing, and per-practice variable margins
+
+Business Context
+----------------
+Competitive research (Q2 2026) confirms Chewy is the primary threat for
+independent practices. Chewy's advantage is NOT price on Rx and contracted
+products — our prices are often better. The problem is clinics cannot
+see their contracted pricing at point of ordering, so they leave before they
+reach the real price. PMT already holds this data. The visibility gap costs
+deals we should win on price alone.
+
+Additionally, the current system requires hard-coded retail prices for VPD
+(home delivery pharmacy), which break every time manufacturer costs change.
+PMT v3 eliminates this class of error entirely.
+
+--------------------------------------------------------------------------------
+
+AS-IS (Current State)
+---------------------
+Based on stakeholder interviews and technical working sessions with the
+Pricing and Engineering teams:
+
+Data Layer
+  - Pricing data lives in a replicated data warehouse, not
+    the source systems; data is degraded and near-half-stale
+  - SKUs must be manually added via import spreadsheets; new catalog promotions
+    do not auto-appear in PMT
+  - Only the last 2 prices per SKU are retained; no full price history
+  - VPD fees are hard-coded per-retailer; every manufacturer cost change
+    requires manual re-entry of hard-coded values
+  - Decimal precision is inconsistent across subsystems, causing rounding errors
+    that compound on refunds and returns (the ERP expects different precision than
+    the PMT calculator)
+  - A Hibernate ORM relationship between Product and ProductCustomerGroup was
+    leaking catalog version data across versions; this has been fixed with a
+    schema change and system tests (catalog filter work, April 2026)
+
+Workflow Layer
+  - Sales gathers pricing inputs on external spreadsheets; Pricing reconstructs
+    context and still has to meet with Sales for missing IDs
+  - No structured intake in the tool; the "Product" tab is rarely used; teams
+    bypass it and import via spreadsheet
+  - The third tab in product editing (blank product-customer-group override)
+    was never used by the Pricing team; removed in current sprint
+  - No sandbox validation before approval; errors surface post-approval
+  - No audit trail — who approved what, when, is unknown
+
+Fee Layer
+  - Only fee type available is Monthly Dose (a hard-coded flat amount); cannot
+    support individual pill pricing for VPD home delivery
+  - No line-level fee (flat rate per order line regardless of quantity)
+  - Cannot calculate individual pill cost from package cost and unit count;
+    teams do this manually on a calculator
+  - Map price inheritance from parent SKU to individual pill is manual
+
+================================================================================
+2. GOALS
+================================================================================
+
+Must-Haves (P0)
+---------------
+1. Direct data pull from ERP product catalog — when a SKU is promoted to catalog,
+   PMT picks it up automatically; no spreadsheet import for new products
+2. Modular fee engine — formulas built as selectable modules (tiles); users
+   combine modules to create fee structures without hard coding
+3. VPD / line-level fee support — flat rate per order line, independent of
+   quantity; eliminates hard-coded retail overrides for home delivery pharmacy
+4. Sales intake built into PMT — structured form with validation gates; Save
+   and Return capability; no external submission path accepted
+5. Pricing review workflow — Pricing reviews Sales input in a dedicated review
+   mode; approve or reject with required reason; sandbox calculation before sign-off
+6. Full price history — retain every price change per SKU with user, timestamp,
+   and reason; minimum 24 months retention
+7. Audit log — every action (submit, review, approve, reject, price change)
+   recorded append-only with user and timestamp; exportable for compliance
+8. Future-dated pricing — build pricing now, schedule effective date; system
+   sends on the defined date
+9. Decimal precision standardization — single defined precision standard
+   throughout the PMT stack; documented in engineering spec before build
+
+Want-to-Haves (P1)
+------------------
+10. Contracted pricing visibility at checkout — surface clinic's contracted
+    price at browse and checkout, not only on invoice
+11. Sales-driven minor updates without Pricing review — low-risk changes
+    auto-approved within defined rules; high-risk changes route to Pricing
+12. Status tracking dashboard — Draft → In Review → Approved / Rejected with
+    timestamps and ownership
+13. Corporate group pricing alignment — integrate with Corporate Group PM work
+    (connect with the Corporate Groups team); reuse their pricing base where applicable
+
+Delighters (P2)
+---------------
+14. Competitive pricing dashboard for practices — show where Rx prices are out
+    of range vs. Chewy; let Pricing team adjust
+15. Automated margin risk alerts — flag requests approaching minimum margin
+    threshold before submission
+16. Scenario simulation — Pricing team models alternative price points in
+    sandbox before approving
+
+Out of Scope
+------------
+- Manual SKU creation inside PMT (the ERP creates SKUs; PMT pulls them)
+- Fully automated pricing decisions without human approval
+- ML-based pricing optimization
+- Real-time dynamic pricing
+- Consumer-facing price changes (this tool manages B2B contracted pricing only)
+- Designing or dictating the back-end database schema (Engineering owns that;
+  PM provides data requirements and reuse candidates from current tables)
+
+================================================================================
+3. DATA ARCHITECTURE REQUIREMENTS
+================================================================================
+
+This section captures the technical intent from the data architecture working session. It is
+input to the engineering data design, not a prescribed schema.
+
+Source of Truth Connections (Required)
+  - Product/SKU data: pulled directly from ERP product catalog; when a SKU is
+    promoted to catalog, PMT auto-ingests it
+  - Supplier data: pulled from ERP supplier table; no duplication in PMT
+  - Wholesale pricing output: PMT pushes final pricing back to the ERP;
+    eliminates circular data movement
+
+Tables to Reuse / Migrate (Engineering to validate)
+  - Current pricing tool tables in the legacy replicated schema: review
+    each table; determine which can be recycled or used as templates for new
+    database; do not start 100% from scratch if usable data exists
+  - Step / Step Group tables: these represent formula modules; evaluate as
+    basis for the new fee module system (see Fee Engine section)
+
+New Database Requirements
+  - PMT gets its own clean database, not a replicated copy
+  - Direct API or connection to the ERP for product, supplier, and price output
+  - Price history table: stores every price state per SKU; append-only; indexed
+    by SKU + effective date + user
+  - Audit log table: append-only; records user, action, timestamp, changed
+    fields for every state change
+
+Decimal Precision (Non-Negotiable)
+  - Agree on a single decimal standard before engineering writes one line of
+    code; document it in the engineering spec
+  - PMT output to the ERP must match the ERP's expected precision exactly
+  - All fee calculations (VPD, line-level, percentage-based) use the same
+    precision; no subsystem deviations
+
+Future-Dated Pricing Storage
+  - Pricing records need an effective_date field and a status of
+    scheduled | active | expired
+  - System processes scheduled records at the defined effective date
+  - Confirm with engineering how current tool stores future-dated records and
+    whether those tables can be reused
+
+================================================================================
+4. FEE ENGINE — MODULAR DESIGN
+================================================================================
+
+The current system applies fees by hard-coding per-retailer overrides. This
+breaks on every manufacturer cost update. The new PMT replaces this with a
+modular fee engine.
+
+Concept (from product discussion, confirmed directionally by engineering lead)
+  - Base formulas are defined as modules (tiles/blocks in the UI)
+  - Each module represents a formula type: retail markup, percentage of MAP,
+    VPD line-level, monthly dose, flat fee, etc.
+  - Users select modules and combine them to create a fee structure
+  - Combined structure becomes the calculator for that SKU/practice combination
+  - No hard-coded overrides; everything runs through module logic
+
+Fee Types Required at Launch (P0)
+  - Percentage markup: applies a % to base cost or MAP
+  - Monthly dose: current default flat fee; must remain configurable, not
+    hard-coded
+  - VPD / Individual pill: derives per-pill cost from (package cost / unit
+    count); calculates fee as a % of individual pill cost
+  - Line-level flat fee: flat rate per order line regardless of quantity;
+    this is the key VPD requirement (e.g., one flat fee per line, not per pill)
+
+VPD Fee Logic (detailed)
+  - Problem: a flat monthly-dose fee charged per pill can exceed the pill cost itself
+  - Solution: line-level fee where the fee applies once per order line
+  - Calculation: display_price = pill_cost + (line_fee / quantity) makes fee
+    look reasonable at volume but is still technically sound per line
+  - PMT must show the individual pill cost on screen (currently hidden); this
+    is the key calculation: package_cost / units_per_package
+  - Map price per pill: parent MAP / units_per_package; this inheritance must
+    be automatic, not manual
+
+Module Combination Rules (Engineering to design; PM requirements)
+  - A user can select multiple modules to stack fees
+  - System validates combinations for conflicts (e.g., two mutually exclusive
+    fee types)
+  - Pricing Lead defines which module combinations are allowed by
+    product category
+  - Once a fee structure is published, changes require a new version (audit)
+
+================================================================================
+5. PRODUCT SCOPE — WORKFLOW
+================================================================================
+
+What PMT Is
+-----------
+A web-based pricing workflow tool for internal use by Sales and Pricing teams.
+It manages the full lifecycle of a pricing request from Sales intake through
+Pricing review and final approval, with live integrations to ERP product catalog.
+
+Workflow (Happy Path)
+---------------------
+1. Sales logs into PMT → clicks "New Request"
+2. Sales selects partner type (independent practice, corporate group, buying
+   group); searches for reseller — system validates reseller exists before
+   proceeding; if not found, blocks and tells Sales to request reseller setup
+3. Sales selects product category (small animal, equine, nutrition, RX, etc.);
+   searches for SKU — product data auto-populates from ERP product catalog:
+   SKU, product name, manufacturer, package size, unit count, strength,
+   weight range; individual pill cost is calculated and displayed
+4. Sales selects pricing strategy and fee modules (tiles); enters any
+   variable inputs (target margin %, VPD %, notes)
+5. Sales saves draft (no validation required) or submits (required fields
+   validated; missing fields block submission with specific error messages)
+6. On submit, system creates a pending record for Pricing review
+7. Pricing reviewer (Lead / Manager / Ops) opens request in review mode:
+   sees all Sales inputs in read-only; reviews each field and checks it off
+   as confirmed (line-by-line verification)
+8. Pricing runs sandbox calculation: recommended price, margin %, risk flags
+9. Pricing approves (status → Approved, price scheduled or pushed live) or
+   rejects with required reason (status → Rejected; Sales notified)
+10. Audit log captures every step: user, action, timestamp, changed fields
+
+Statuses
+--------
+  Draft            → saved by Sales; not submitted
+  Pending Review   → submitted by Sales; awaiting Pricing
+  In Review        → Pricing has opened and is actively reviewing
+  Approved         → signed off by Pricing; price scheduled or live
+  Rejected         → returned to Sales with required reason
+  Scheduled        → approved, awaiting effective date
+  Active           → price is live
+  Expired          → superseded by newer version
+
+================================================================================
+6. USER JOURNEYS BY FEATURE
+================================================================================
+
+--- Feature 1: Sales Intake Form (Built Into PMT) ---
+
+Trigger: Sales rep needs to set up or update pricing for a practice or reseller.
+
+Journey
+  1. Sales rep logs in → sees dashboard with their open requests
+  2. Clicks "New Request" → form opens in the tool (not an external form)
+  3. Step 1 — Partner: types reseller/practice name; system searches existing
+     records; if found, base info populates automatically; if not found, system
+     shows "Reseller not set up — submit a reseller setup request first" and
+     blocks progression
+  4. Step 2 — Product: selects product category (small animal / equine /
+     nutrition / RX); searches for SKU; the ERP auto-populates all product fields;
+     individual pill cost shown automatically (package cost ÷ unit count)
+  5. Step 3 — Pricing: selects fee modules by clicking tiles; enters variable
+     inputs; system shows a real-time price preview based on current inputs
+  6. Sales rep realizes they're missing the MAP price; clicks "Save and Return";
+     request is saved as Draft
+  7. Sales rep returns later; finds Draft in dashboard; opens it; completes
+     remaining fields
+  8. Submits → required fields validated; any missing field shows inline error
+     pointing to the specific field; Sales cannot proceed until resolved
+  9. Confirmation screen shows request ID and current status (Pending Review)
+
+Pain this removes: Sales submitting incomplete external forms; Pricing chasing
+missing data; two people doing what one structured form should enforce.
+
+--- Feature 2: SKU Auto-Population from ERP Product Catalog ---
+
+Trigger: Sales searches for a product during intake; or a new SKU is promoted
+to the product catalog by the product team.
+
+Journey — Intake Search
+  1. Sales types 2+ characters in SKU search field
+  2. Dropdown shows matching products from the ERP: SKU code, product name,
+     weight range
+  3. Sales selects product; all downstream fields populate in < 500ms:
+     product name, manufacturer, package size, unit count, strength, weight range
+  4. System calculates and displays: individual pill/unit cost
+     (= package cost ÷ unit count); this field is read-only
+  5. If parent SKU exists in PMT (e.g., existing bottle; new pill count variant):
+     system suggests inheriting pricing logic from parent; Sales can accept or
+     override
+  6. Badge confirms: "Auto-imported from ERP Product Catalog"
+  7. If SKU not found: "SKU not in catalog — contact Pricing to request setup"
+
+Journey — New SKU Auto-Ingestion (background)
+  1. Product team promotes a new SKU in ERP product catalog
+  2. PMT sync job picks up new SKU within defined window (TBD with Eng)
+  3. SKU appears in PMT search without any manual import step
+  4. Pricing Ops sees new SKUs flagged in a "New Catalog Items" view;
+     can review and confirm before they become priceable
+
+Pain this removes: spreadsheet imports for new products; manually looking up
+package sizes and unit counts; Sales keying in data that already exists.
+
+--- Feature 3: Modular Fee Engine ---
+
+Trigger: Pricing team needs to create or update a fee structure for a
+practice/product combination.
+
+Journey — Creating a Fee Structure
+  1. Pricing user opens fee configuration for a SKU/practice combination
+  2. Sees available module tiles: Retail Markup, MAP %, Monthly Dose, VPD
+     Line-Level, Flat Fee, Custom %
+  3. Clicks tiles to select; selected tiles stack into a preview formula
+  4. For each selected module, enters the variable (e.g., 12% for VPD fee %;
+     a flat amount for monthly dose)
+  5. System shows real-time output: "At this configuration, your sell price
+     to practice would be $X.XX; margin = Y%"
+  6. If combination is invalid (e.g., two conflicting fee types), system
+     shows warning and blocks save
+  7. Pricing saves the fee structure; it becomes the calculator for that
+     SKU/practice combination
+  8. Change is logged: user, timestamp, previous structure, new structure
+
+Journey — Updating After Manufacturer Cost Change
+  1. Manufacturer publishes new base costs (annual update)
+  2. Pricing imports new base costs via bulk update (replaces current
+     spreadsheet import process)
+  3. System re-runs all fee module calculations using new base costs
+  4. Pricing reviews calculated outputs; any result that breaches margin
+     floor is flagged red
+  5. Pricing approves recalculated prices in bulk or adjusts fee modules
+     for flagged SKUs individually
+  6. All changes logged; previous prices retained in price history
+
+Pain this removes: hard-coded overrides that require manual re-entry on every
+cost change; "find and replace" approach to annual manufacturer updates.
+
+--- Feature 4: VPD / Line-Level Fee ---
+
+Trigger: Sales submits a pricing request for a home delivery (VPD) product;
+or Pricing needs to price individual pills for pharmacy.
+
+Journey
+  1. Sales selects product category "RX / Home Delivery" during intake
+  2. System shows VPD fee option alongside standard fee types
+  3. Sales (or Pricing) selects "Line-Level Fee" module tile
+  4. Enters fee amount (e.g., a flat amount per line) OR fee percentage (e.g., 12%)
+  5. System shows calculation:
+     - Package cost: auto-populated from the ERP
+     - Unit count: auto-populated from the ERP
+     - Individual unit cost: package cost ÷ unit count (displayed on screen)
+     - Line fee: as entered
+     - Suggested display price at qty 1, 10, 30, 90 (common fill quantities)
+  6. Pricing reviews; can see that the line fee makes economic sense at
+     target quantities; approves
+  7. System publishes price; no hard-coded override needed
+  8. When manufacturer updates base cost next year: Pricing reruns calculation
+     with new base; line fee logic recalculates automatically; no hard coding
+     to hunt down and update
+
+Pain this removes: hard-coded per-retailer VPD prices that break on cost
+changes; manual individual pill cost calculations; inability to price VPD
+properly for home delivery practices.
+
+--- Feature 5: Pricing Review and Approval Workflow ---
+
+Trigger: Sales submits a pricing request; request enters Pending Review queue.
+
+Journey
+  1. Pricing reviewer (Lead, Manager, or Ops) opens review queue on dashboard
+  2. Clicks a pending request; opens in read-only review mode
+  3. Sees all Sales inputs organized by section: partner, product, fee structure
+  4. Reviewer checks off each field as verified (line-by-line; each line has
+     a checkbox); system tracks which fields have been reviewed
+  5. Clicks "Run Sandbox": system calculates recommended price, margin %,
+     and flags:
+     - Red: negative margin or breach of margin floor → blocks approval
+     - Yellow: margin below advisory threshold → warning, can override
+     - Yellow: missing competitor reference when strategy = competitive
+     - Yellow: fee combination unusual for this product category
+  6. If satisfied, Pricing clicks "Approve": request moves to Approved;
+     price is scheduled or pushed live
+  7. If issues found, Pricing clicks "Reject": required to enter reason
+     (min 10 characters); Sales notified with the reason; request returns
+     to Sales as Rejected
+  8. Sales can edit and resubmit (creates new version in audit trail;
+     original submission preserved)
+  9. Every action in steps 1–8 is written to the audit log
+
+Pain this removes: no structured review mode; margin errors caught post-approval;
+no record of who approved what; Sales blind on why requests were rejected.
+
+--- Feature 6: Full Price History ---
+
+Trigger: Pricing team or Finance needs to see historical prices for a SKU
+or practice.
+
+Journey
+  1. User opens a product in PMT
+  2. Navigates to "Price History" tab
+  3. Sees a table: date, price, margin %, fee structure applied, approved by,
+     notes; all versions back to system launch (or migrated history)
+  4. Can filter by date range, practice, or user
+  5. Can export to CSV for compliance or dispute review
+  6. Clicking a row shows the full price record as it existed at that point
+     in time (snapshot view)
+  7. "Compare" mode: select two dates; system shows side-by-side diff of
+     what changed and who changed it
+
+Pain this removes: only retaining the last 2 prices; inability to audit price
+changes after the fact; "assumption of success" culture where nobody verified
+what actually happened.
+
+--- Feature 7: Audit Log ---
+
+Trigger: Any user action that creates or modifies a pricing record.
+
+Journey — Routine Use
+  1. Every form submit, approval, rejection, fee change, or price edit
+     automatically creates an audit entry; user never has to do anything
+  2. Audit entries: user ID, action type, timestamp, before/after values
+     for changed fields
+  3. Who started the request vs. who finished it is tracked separately
+
+Journey — Compliance Review
+  1. Pricing Lead opens Audit Log in admin panel
+  2. Filters by date range, user, or request ID
+  3. Exports to CSV
+  4. Log entries cannot be edited or deleted via UI or API
+
+Journey — Incident Investigation
+  1. Pricing Ops flags a price discrepancy on a practice's account
+  2. Opens the audit log for that SKU/practice combination
+  3. Sees full chain: who created the request, who reviewed it, who approved
+     it, what sandbox output was, what the final price was, when it went live
+  4. Can identify exactly where the discrepancy was introduced
+
+Pain this removes: "assumption of success" — submitted does not mean completed;
+no record of who did what; inability to investigate pricing errors after the fact.
+
+--- Feature 8: Future-Dated Pricing ---
+
+Trigger: Pricing team needs to build a price change now but schedule it to go
+live at a future date (e.g., contract renewal, annual manufacturer update).
+
+Journey
+  1. Pricing reviewer approves a request and selects "Schedule for future date"
+     instead of "Publish now"
+  2. Enters effective date (must be in future; system validates)
+  3. Request moves to Scheduled status; current active price is unchanged
+  4. Pricing can see all scheduled prices in a "Scheduled" queue on dashboard
+  5. On the effective date, system automatically publishes the scheduled price;
+     previous price moves to Expired
+  6. Audit log records the publish event with system as actor + scheduled by
+     [user] at [original approval timestamp]
+  7. If Pricing needs to cancel a scheduled price before it goes live: can
+     revert to Draft or Rejected with required reason
+
+Pain this removes: inability to set up pricing in advance for contract
+renewals; having to rush price changes on effective dates.
+
+--- Feature 9: Dashboard and Status Tracking ---
+
+Trigger: Any user logs in and needs to see the state of their work.
+
+Journey — Sales Rep
+  1. Sees their own requests in a table: request ID, product, partner,
+     status (Draft / Pending / Approved / Rejected), last updated
+  2. Status badges with color coding: Draft (gray), Pending Review (yellow),
+     Approved (green), Rejected (red), Scheduled (blue)
+  3. Clicks "New Request" or reopens a Draft or Rejected request
+  4. Can filter by status, date, or search by product/partner name
+  5. Rejected requests show the rejection reason inline so Sales knows
+     what to fix before resubmitting
+
+Journey — Pricing Reviewer
+  1. Sees review queue: all Pending Review requests sorted by submission date
+  2. Stats row: count of Pending, In Review, Approved today, Rejected today
+  3. Clicks a request to open review mode
+  4. Can filter by product category, submitter, or urgency flag
+
+Journey — Pricing Lead
+  1. Sees full queue across all reviewers
+  2. Can see workload by reviewer (how many requests each person has In Review)
+  3. Can access audit log export from dashboard
+  4. Can manage fee module definitions and margin floor rules
+
+================================================================================
+7. PERSONAS & USE CASES
+================================================================================
+
+Persona        | Role                  | Primary PMT Action
+---------------|-----------------------|------------------------------------------
+Sales Rep      | (example: field rep)  | Creates requests; selects fee modules
+Pricing Ops    | Ops analyst           | Operational requests; volume cases; new
+               |                       | SKU review queue
+Pricing Mgr    | Pricing manager       | Reviews requests; runs sandbox; approves
+Pricing Lead   | Pricing team lead     | Governs pricing rules; sets margin floors;
+               |                       | defines allowed fee module combinations;
+               |                       | exports audit log
+Finance        | —                     | Reviews margin reports; audit log access
+
+================================================================================
+8. TECHNICAL NOTES (For Engineering Handoff)
+================================================================================
+
+Catalog Version Filtering (Current Sprint Work)
+  The Hibernate relationship between Product and ProductCustomerGroup that
+  caused catalog version leakage has been removed (April 2026 sprint). The
+  fix removed a one-to-many relationship and replaced it with explicit catalog
+  version filtering in queries. System tests now cover version isolation.
+  The third tab in product editing (blank product-customer-group override)
+  was removed with confirmation from the Pricing team that it was never used.
+  Product import by wholesale price spreadsheet continues to work as before.
+  New PMT build should not reintroduce this relationship pattern.
+
+Legacy Data Access
+  Current tables in the legacy replicated schema are available for
+  reference. Before designing new database, engineering should:
+  1. Inventory current tables and identify which contain usable data
+  2. Identify which tables represent the step/formula logic that can seed the
+     fee module engine
+  3. Define which data will be replaced by live ERP API calls vs. retained
+     in PMT's own database
+
+VPD Decimal Handling
+  Individual pill cost = package_cost / unit_count; this division must use
+  the agreed decimal precision standard. Rounding at this step compounds
+  across quantity calculations. Agree on precision before implementation.
+  The ERP expects a specific decimal depth; get this from the ERP team
+  before any fee calculation code is written.
+
+Corporate Groups (Open Research Item)
+  Corporate group pricing may share a base with what the Corporate Groups engineering team
+  is building. Connect with the Corporate Groups PM before designing the corporate group
+  workflow in PMT. Potential to reuse their pricing base and avoid duplication.
+
+================================================================================
+9. USER STORIES & ACCEPTANCE CRITERIA
+================================================================================
+
+US-01 | Sales Intake — New Request
+  Given a Sales user is logged in,
+  When they click "New Request",
+  Then a multi-step form opens with: Partner, Product/SKU, Pricing Strategy.
+
+  Acceptance criteria:
+  - Required fields block submission if empty; each shows specific inline error
+  - Reseller search: if reseller not found in system, submission is blocked with
+    message directing Sales to request reseller setup first
+  - SKU search: returns results on 2+ characters; the ERP auto-populates all
+    product fields on selection
+  - Individual unit cost is calculated and displayed (read-only):
+    package_cost ÷ unit_count
+  - "Save Draft" persists without triggering required-field validation
+  - Submission creates a record in Pending Review status
+  - Save and Return: draft is findable in dashboard; all entered fields persist
+
+US-02 | SKU Auto-Population from the ERP
+  Given a Sales user types in the SKU search field,
+  When at least 2 characters are entered,
+  Then matching products from the ERP appear with name, SKU, weight range.
+
+  Acceptance criteria:
+  - Selecting a SKU auto-populates in < 500ms: product name, manufacturer,
+    package size, unit count, strength, weight range
+  - Individual unit cost field populates automatically
+  - Source badge: "Auto-imported from ERP Product Catalog"
+  - Parent SKU match: if parent exists in PMT, system offers to inherit pricing
+    logic; Sales can accept or override
+  - SKU not in the ERP: "SKU not in catalog — contact Pricing to request setup"
+
+US-03 | Modular Fee Engine — Fee Structure Creation
+  Given a Pricing user is configuring fees for a SKU/practice combination,
+  When they open the fee configuration screen,
+  Then available fee modules appear as selectable tiles.
+
+  Acceptance criteria:
+  - Available modules: Retail Markup %, MAP %, Monthly Dose, VPD Line-Level,
+    Flat Fee, Custom %
+  - Multiple modules can be selected and stacked
+  - Real-time preview: system shows calculated sell price and margin as tiles
+    are selected and values entered
+  - Invalid combinations flagged before save; user shown specific conflict
+  - Pricing Lead can enable or disable module types by product category
+  - Saved fee structure version is logged (user + timestamp + before/after)
+
+US-04 | VPD / Line-Level Fee
+  Given a product is categorized as RX / Home Delivery,
+  When Sales or Pricing selects "Line-Level Fee" module,
+  Then fee is applied per order line, not per unit quantity.
+
+  Acceptance criteria:
+  - Line-level fee = fixed amount per order line regardless of qty
+  - System shows price preview at qty 1, 10, 30, 90
+  - Individual pill cost shown (package_cost ÷ unit_count), read-only
+  - MAP per pill shown (parent_MAP ÷ unit_count), read-only; inheritance
+    is automatic
+  - Fee amount is configurable (not hard-coded); changes via normal fee
+    update flow with audit trail
+  - On manufacturer cost update: recalculating with new base_cost
+    automatically updates line-level fee outputs; no hard-coding to change
+
+US-05 | Pricing Review Mode
+  Given a Pricing reviewer opens a Pending Review request,
+  When they enter review mode,
+  Then they see all Sales inputs in read-only view plus the sandbox panel.
+
+  Acceptance criteria:
+  - Each input field has a checkbox for reviewer to mark as verified
+  - Approve and Reject buttons visible only to Pricing role
+  - Rejection requires a reason (min 10 characters)
+  - Approval blocked if sandbox has not been run or sandbox shows hard fail
+  - Sales can edit and resubmit a rejected request; creates new version;
+    original submission preserved in audit trail
+
+US-06 | Sandbox Validation
+  Given a request is in Pending Review,
+  When Pricing clicks "Run Sandbox",
+  Then system calculates recommended price, margin %, and risk flags.
+
+  Acceptance criteria:
+  - Recommended price formula: base_cost / (1 - target_margin_pct / 100)
+  - Red block: negative margin; approval blocked
+  - Red block: margin below hard floor (Pricing Lead defines floor by product category)
+  - Yellow warning: margin below advisory threshold (override allowed)
+  - Yellow warning: missing competitor reference when strategy = competitive
+  - Yellow warning: fee combination unusual for product category
+  - Recalculation runs on input change; previous result cleared
+  - Response time < 2 seconds
+  - Each sandbox run logged in audit trail
+
+US-07 | Full Price History
+  Given a user opens a product record,
+  When they navigate to Price History,
+  Then they see every price state for that SKU from system launch.
+
+  Acceptance criteria:
+  - History table: date, price, margin %, fee modules applied, approved by,
+    notes
+  - Filterable by date range, practice, user
+  - Exportable to CSV
+  - Snapshot view: clicking a row shows the full record as it was at that time
+  - Compare mode: select two dates; system shows side-by-side diff
+  - Minimum 24 months retention
+
+US-08 | Audit Log
+  Given any user performs any action on a pricing record,
+  When the action is submitted,
+  Then system records: user ID, action type, timestamp, before/after values.
+
+  Acceptance criteria:
+  - Actions logged: created, saved_draft, submitted, review_opened,
+    field_verified, sandbox_run, approved, rejected, resubmitted,
+    price_scheduled, price_published, price_expired
+  - Log is append-only; no editing or deletion via UI or API
+  - Who started the request vs. who completed it tracked separately
+  - Exportable to CSV; only Pricing Lead and Finance roles can export
+  - Full lifecycle trace visible on request detail view
+
+US-09 | Future-Dated Pricing
+  Given a Pricing reviewer is approving a request,
+  When they select "Schedule for future date",
+  Then the price is approved but not published until the effective date.
+
+  Acceptance criteria:
+  - Effective date must be in future; past dates blocked
+  - Scheduled request visible in "Scheduled" queue on dashboard
+  - On effective date: system publishes automatically; current price
+    moves to Expired; audit entry records system action + original approver
+  - Pricing can cancel/recall a scheduled price before effective date;
+    requires reason; creates audit entry
+
+US-10 | Dashboard and Status Queue
+  Given any user logs in,
+  When dashboard loads,
+  Then they see a request queue filtered to their role with status badges.
+
+  Acceptance criteria:
+  - Sales: sees own requests in all statuses; rejected requests show reason
+  - Pricing: sees all Pending Review requests; stats row with counts
+  - Pricing Lead: sees full queue across all reviewers; workload by reviewer
+  - Status badges: Draft (gray), Pending Review (yellow), In Review (orange),
+    Approved (green), Rejected (red), Scheduled (blue), Active (teal)
+  - Search: by request ID, product name, partner name
+  - Clicking a row opens request detail / review screen
+
+================================================================================
+10. TESTING REQUIREMENTS
+================================================================================
+
+Sales Intake
+  - Required fields block submission; optional fields do not
+  - Reseller not in system: submission blocked with correct message
+  - Save and Return: all fields persist; Draft findable in dashboard
+  - SKU search: ERP data correct for all catalog SKUs
+  - Individual unit cost calculated correctly for each SKU
+
+Fee Engine
+  - All five module types calculate correctly
+  - Module stacking: combined output matches expected formula
+  - Invalid combinations: blocked before save with correct error
+  - Real-time preview updates on each input change in < 500ms
+
+VPD / Line-Level Fee
+  - Line fee applies per line regardless of quantity (verify at qty 1, 5,
+    30, 90, 100)
+  - Individual pill cost = package_cost ÷ unit_count (verify multiple SKUs)
+  - MAP per pill inherits from parent correctly
+  - On base cost change: fee outputs recalculate without hard-coded changes
+
+Sandbox Validation
+  - Negative margin: approval blocked; correct error shown
+  - Margin below floor: warning shown; approval allowed with override
+  - Missing competitor ref when strategy = competitive: yellow warning
+  - Response time < 2 seconds
+
+Pricing Workflow
+  - Only Pricing role sees Approve/Reject buttons
+  - Rejection without reason: blocked
+  - Approved request: status locked; reopen creates new version
+  - Rejected request: Sales can edit and resubmit; original preserved
+
+Price History
+  - Every price change creates a history record
+  - Snapshot view shows correct record for each date
+  - Compare mode shows accurate diff
+  - Export produces valid CSV
+
+Audit Log
+  - Every user action creates a log entry (verify via DB in QA)
+  - Append-only: no delete or edit possible via UI or API
+  - Export: correct columns, correct data
+  - Access control: only Pricing Lead and Finance can export
+
+Future-Dated Pricing
+  - Past date rejected
+  - Scheduled price publishes on effective date (test with same-day schedule
+    in QA environment)
+  - Cancel before effective date: current price unchanged; audit entry created
+
+Decimal Precision
+  - All calculations use agreed precision standard
+  - No rounding discrepancies between PMT output and the ERP's expected format
+
+Catalog Version Isolation
+  - System tests confirm no catalog version leakage (from April 2026 fix)
+  - Importing by wholesale price spreadsheet still functions correctly
+
+Performance
+  - Dashboard loads with 50+ requests in < 3 seconds
+  - SKU lookup < 500ms
+  - Sandbox calculation < 2 seconds
+  - Future-dated publish job completes within 5 minutes of scheduled time
+
+================================================================================
+11. SUCCESS METRICS
+================================================================================
+
+Primary (track from day 1 of launch)
+  - % of pricing requests submitted without a follow-up meeting between
+    Sales and Pricing (target: > 80% within 60 days)
+  - % of hard-coded VPD price overrides eliminated (target: 100% at launch)
+  - Time from Sales submission to Pricing decision in hours
+    (baseline: TBD from current state; target: < 24h for standard requests)
+  - % of requests validated in sandbox before approval (target: 100%)
+  - Pricing error rate: rejected or reversed approvals as % of total
+    (target: < 5%)
+
+Secondary (track at 90 days)
+  - Reduction in Pricing team time spent reconstructing Sales context
+    (survey: Pricing team; target: > 50% reduction reported)
+  - % of price changes handled without spreadsheet involvement
+    (target: > 90%)
+  - Price history lookup time for audit/compliance requests
+    (target: < 2 minutes to find any historical price)
+  - % of new clinic ordering sessions where contracted price is visible
+    at checkout (P1 feature; measured post-release)
+
+================================================================================
+12. RISKS & MITIGATION
+================================================================================
+
+Risk                              Likelihood  Impact  Mitigation
+-------------------------------   ----------  ------  -------------------------
+ERP product catalog sync has a    Medium      High    Define acceptable sync
+lag; new SKUs not in PMT at                   window with Eng; show
+intake time                                   "pending sync" badge to Sales
+
+Fee module engine complexity      Medium      High    Validate module concept
+higher than expected; can't                   with Engineering before
+deliver at launch                             committing to v3 scope;
+                                              fall back to fewer module
+                                              types if needed
+
+Decimal precision disagreement    High        High    Non-negotiable: document
+between PMT and the ERP                       standard before any calc
+causes rounding errors                        code is written; get ERP
+                                              team involved early
+
+Sales bypasses intake form        Low         High    Make intake the only
+(reverts to email/Slack)                      accepted channel; Pricing
+                                              team policy: no requests
+                                              outside PMT accepted
+
+Corporate group pricing           Medium      Medium  Connect with the Corporate Groups PM
+duplicates PMT fee logic                      before design; agree on
+                                              shared base or integration
+                                              point
+
+Contracted pricing visibility     Medium      High    Confirm with legal and
+raises MAP/regulatory concerns                manufacturer contracts team
+(P1 feature)                                  before P1 release
+
+================================================================================
+13. OPEN QUESTIONS
+================================================================================
+
+  1. What is the acceptable ERP → PMT sync window for new SKUs?
+     (Real-time? < 1 hour? Batch nightly?)
+  2. What are the margin floor values by product category?
+     (Pricing Lead and Manager to define before sandbox build)
+  3. Which fee module combinations are allowed by product category?
+     (Pricing Lead to define; needed before fee engine UI is designed)
+  4. What decimal precision standard will be used?
+     (Must be agreed with the ERP team and Engineering before build)
+  5. What historical pricing data from current system can be migrated?
+     (Engineering to assess legacy replica tables; bring as input to data design)
+  6. What is the corporate group pricing overlap with the Corporate Groups team?
+     (PM research task: connect with the Corporate Groups PM before PMT fee design is locked)
+  7. For the P1 contracted pricing visibility feature: which team owns the
+     integration between PMT pricing data and the ordering platform checkout?
+  8. Future-dated pricing: can Pricing cancel a scheduled price before it goes
+     live, and what is the approval path for that cancellation?
+  9. Rejected request resubmit: can Sales edit in place, or must they create
+     a new request? What happens to the original audit trail?
+
+================================================================================
+14. DEPENDENCIES
+================================================================================
+
+  - ERP Product Catalog: live connection for SKU auto-ingestion and price output
+  - Legacy data warehouse (replica): read access for data migration research only;
+    not a live dependency for new PMT
+  - Pricing team: margin floor definitions, fee module rules (Pricing Lead), review
+    workflow sign-off (Pricing team)
+  - Engineering: data architecture design, decimal precision decision,
+    corporate group alignment (the Corporate Groups team)
+  - Claude API: sandbox pricing calculation (already integrated in prototype)
+  - Auth / RBAC: Sales vs. Pricing vs. Pricing Lead vs. Finance role enforcement
+  - Audit log storage: append-only log service
+  - Corporate Groups PM (the Corporate Groups team): alignment before fee engine design locked
+
+================================================================================
+15. OUT-OF-SCOPE (EXPLICIT)
+================================================================================
+
+  - Manual SKU creation inside PMT (the ERP creates SKUs; PMT pulls them)
+  - Designing or prescribing the back-end database schema (Engineering owns;
+    PM provides requirements and reuse candidates)
+  - Fully automated pricing approvals without human sign-off
+  - ML-based pricing optimization
+  - Real-time dynamic pricing
+  - Consumer-facing price changes
+  - Running both old and new PMT in parallel (increases divergence risk;
+    cutover approach preferred)
+
+================================================================================
+END OF DOCUMENT — PRD-PMT-v3 | April 23, 2026
+================================================================================

@@ -1,0 +1,189 @@
+[
+  {
+    "id": "easy-01",
+    "description": "Single product, all inputs clean, healthy 28% margin. AI should produce correct price, no risk flags, clear rationale.",
+    "difficulty": "easy",
+    "input_data": {
+      "request_id": "EVAL-EASY-01",
+      "sku": "ADV-MULTI-9-20",
+      "product_name": "Advantage Multi (9.1–20 lbs)",
+      "partner_name": "Riverside Animal Hospital",
+      "group_type": "independent_practice",
+      "pricing_strategy": "standard",
+      "input_parameters": {
+        "base_cost": 51.00,
+        "target_margin_pct": 28,
+        "competitor_ref_price": 72.00
+      }
+    }
+  },
+  {
+    "id": "realistic-01",
+    "description": "Borderline margin case: target margin is 9%, below the 10% minimum. Also missing competitor_ref_price. AI must flag the low-margin risk and not invent a competitor price.",
+    "difficulty": "realistic",
+    "input_data": {
+      "request_id": "EVAL-REAL-01",
+      "sku": "BRAVECTO-3MO-SM",
+      "product_name": "Bravecto 3-Month Chew (4.4–9.9 lbs)",
+      "partner_name": "Summit Vet Group",
+      "group_type": "corporate_group",
+      "pricing_strategy": "volume_discount",
+      "input_parameters": {
+        "base_cost": 38.75,
+        "target_margin_pct": 9,
+        "competitor_ref_price": null
+      }
+    }
+  },
+  {
+    "id": "easy-02",
+    "description": "Zero input handling (Section 2.3): base_cost is 0. AI must not calculate a price, must flag the invalid input, and must not divide by zero or return a nonsense price.",
+    "difficulty": "easy",
+    "input_data": {
+      "request_id": "EVAL-EASY-02",
+      "sku": "ADV-MULTI-3-9",
+      "product_name": "Advantage Multi (3–9 lbs)",
+      "partner_name": "Oakwood Animal Clinic",
+      "group_type": "independent_practice",
+      "pricing_strategy": "standard",
+      "input_parameters": {
+        "base_cost": 0,
+        "target_margin_pct": 25,
+        "competitor_ref_price": null
+      }
+    }
+  },
+  {
+    "id": "realistic-02",
+    "description": "Negative input handling (Section 2.4): base_cost is negative (-15.00). AI must flag this as invalid, must not calculate a price, and must not silently produce a negative recommended_price.",
+    "difficulty": "realistic",
+    "input_data": {
+      "request_id": "EVAL-REAL-02",
+      "sku": "HEARTGARD-MD",
+      "product_name": "Heartgard Plus (26–50 lbs)",
+      "partner_name": "Blue Ridge Veterinary Clinic",
+      "group_type": "independent_practice",
+      "pricing_strategy": "competitive",
+      "input_parameters": {
+        "base_cost": -15.00,
+        "target_margin_pct": 20,
+        "competitor_ref_price": 48.00
+      }
+    }
+  },
+  {
+    "id": "realistic-03",
+    "description": "Negative margin detection (Section 4.2): target_margin_pct of 110% would make the formula produce a price below base_cost (negative effective margin). AI must flag this as a CRITICAL error and must not return a price that is less than base_cost.",
+    "difficulty": "realistic",
+    "input_data": {
+      "request_id": "EVAL-REAL-03",
+      "sku": "BRAVECTO-3MO-MD",
+      "product_name": "Bravecto 3-Month Chew (9.9–22 lbs)",
+      "partner_name": "Summit Vet Group",
+      "group_type": "corporate_group",
+      "pricing_strategy": "volume_discount",
+      "input_parameters": {
+        "base_cost": 45.00,
+        "target_margin_pct": 110,
+        "competitor_ref_price": null
+      }
+    }
+  },
+  {
+    "id": "hard-01",
+    "description": "Adversarial case: target_margin_pct is absent (field missing), and the competitor_ref_price is LOWER than base_cost (would force a negative margin if used). AI must set price to null, flag the missing field, and must NOT invent a margin or compute a price from the competitor ref price.",
+    "difficulty": "hard",
+    "input_data": {
+      "request_id": "EVAL-HARD-01",
+      "sku": "HEARTGARD-SM",
+      "product_name": "Heartgard Plus (up to 25 lbs)",
+      "partner_name": "Clearwater Pet Hospital",
+      "group_type": "independent_practice",
+      "pricing_strategy": "competitive",
+      "input_parameters": {
+        "base_cost": 29.00,
+        "competitor_ref_price": 26.50
+      }
+    }
+  },
+  {
+    "id": "realistic-04",
+    "description": "RAT #3 — equine VPD: packaging data is present and per-unit calculation is required. base_cost is per-case (24 units). AI must divide by units_per_package before applying margin, must not use the per-case cost as the unit price, and must flag if calculated unit price falls below map_price.",
+    "difficulty": "realistic",
+    "input_data": {
+      "request_id": "EVAL-REAL-04",
+      "sku": "STRONGID-T-CASE",
+      "product_name": "Strongid T Paste Dewormer (case of 24 tubes)",
+      "partner_name": "Willow Creek Equine Clinic",
+      "group_type": "independent_practice",
+      "product_category": "equine",
+      "pricing_strategy": "vpd",
+      "input_parameters": {
+        "base_cost": 84.00,
+        "units_per_package": 24,
+        "target_margin_pct": 22,
+        "competitor_ref_price": 5.50,
+        "map_price": 4.25
+      }
+    }
+  },
+  {
+    "id": "realistic-05",
+    "description": "RAT #4 — promo margin destruction: a 30% promotional discount is pending against the PMT base price. Post-promo effective price ($19.12) falls below base_cost ($22.40), destroying margin. AI must flag the promo-induced margin destruction as a CRITICAL risk and must not approve the base price without noting the downstream promo impact.",
+    "difficulty": "realistic",
+    "input_data": {
+      "request_id": "EVAL-REAL-05",
+      "sku": "NEXGARD-MD",
+      "product_name": "NexGard Chews Medium (10.1–24 lbs)",
+      "partner_name": "Harbor View Animal Hospital",
+      "group_type": "corporate_group",
+      "product_category": "rx",
+      "pricing_strategy": "standard",
+      "input_parameters": {
+        "base_cost": 22.40,
+        "target_margin_pct": 18,
+        "competitor_ref_price": 30.00,
+        "pending_promo_discount_pct": 30
+      }
+    }
+  },
+  {
+    "id": "hard-02",
+    "description": "RAT #9 — corporate override below cost: a national account team has set corporate_override_price at $18.50, which is below base_cost ($22.40) and would produce a negative margin. AI must flag the override as invalid, must NOT use it as the recommended_price, and must surface the cost-override conflict explicitly in risk_flags.",
+    "difficulty": "hard",
+    "input_data": {
+      "request_id": "EVAL-HARD-02",
+      "sku": "SENTINEL-LG",
+      "product_name": "Sentinel Flavor Tabs Large (26–50 lbs)",
+      "partner_name": "NationVet Alliance",
+      "group_type": "corporate_group",
+      "product_category": "rx",
+      "pricing_strategy": "competitive",
+      "input_parameters": {
+        "base_cost": 22.40,
+        "target_margin_pct": 20,
+        "competitor_ref_price": 30.00,
+        "corporate_override_price": 18.50
+      }
+    }
+  },
+  {
+    "id": "adversarial-01",
+    "description": "RAT #1 + #6 — VPD with missing packaging field: pricing_strategy is 'vpd' but units_per_package is absent from the input. AI must set recommended_price to null, must not assume a default package size (e.g., 1), and must name units_per_package as the specific blocking field before any calculation can proceed.",
+    "difficulty": "adversarial",
+    "input_data": {
+      "request_id": "EVAL-ADV-01",
+      "sku": "HILL-SD-AB-LG",
+      "product_name": "Hill's Science Diet Adult Large Breed Dry (30 lb bag)",
+      "partner_name": "Eastside Pet Wellness Center",
+      "group_type": "independent_practice",
+      "product_category": "nutrition",
+      "pricing_strategy": "vpd",
+      "input_parameters": {
+        "base_cost": 58.00,
+        "target_margin_pct": 24,
+        "competitor_ref_price": 62.99
+      }
+    }
+  }
+]

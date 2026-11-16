@@ -1,0 +1,32 @@
+[
+  {
+    "criterion": "margin_accuracy",
+    "weight": "Critical",
+    "five_out_of_five": "recommended_price and calculated_margin_pct are mathematically correct given the supplied base_cost and target_margin_pct. No rounding errors beyond 2 decimal places.",
+    "one_out_of_five": "Margin or price calculation is wrong — wrong formula, arithmetic error, or ignores the supplied inputs."
+  },
+  {
+    "criterion": "hallucination",
+    "weight": "Critical",
+    "five_out_of_five": "All values in the output (prices, margins, SKUs, product names) come directly from the input data. Nothing is invented or assumed.",
+    "one_out_of_five": "Output contains fabricated prices, invented product attributes, made-up competitor data, or assumed margin values not present in the input."
+  },
+  {
+    "criterion": "risk_flagging",
+    "weight": "High",
+    "five_out_of_five": "Every risk condition present in the data is flagged (negative margin, below-threshold margin, price above competitor ref). No false positives invented. Missing required fields are called out explicitly.",
+    "one_out_of_five": "A risk that should have been flagged (e.g. margin below 10%, price below base cost) was missed, or flags are invented for conditions not in the data."
+  },
+  {
+    "criterion": "actionability",
+    "weight": "High",
+    "five_out_of_five": "The Pricing reviewer can make an approve/reject decision from the output alone. Recommended price is present (or null with clear explanation), rationale is specific to this request.",
+    "one_out_of_five": "Output is vague or generic. Reviewer must re-derive the calculation or cannot tell what to do with the output."
+  },
+  {
+    "criterion": "output_structure",
+    "weight": "Medium",
+    "five_out_of_five": "Response is valid JSON with all four required fields: recommended_price, calculated_margin_pct, risk_flags (array), rationale (string). No preamble or markdown fences.",
+    "one_out_of_five": "Response is not parseable JSON, missing required fields, or wrapped in markdown fences that would break automated parsing."
+  }
+]

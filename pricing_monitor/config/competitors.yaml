@@ -1,0 +1,54 @@
+competitors:
+  - name: "Chewy"
+    slug: "chewy"
+    rate_limit_delay_seconds: 3
+    viewport:
+      width: 1280
+      height: 900
+    products:
+      - canonical_name: "NexGard 10-24lbs 6-pack"
+        slug: "nexgard-10-24lb-6pk"
+        url: "https://www.chewy.com/nexgard-chewables-flea-tick/dp/52063"
+        category: "flea_tick_oral"
+        expected_price_range: [150, 220]
+      - canonical_name: "Frontline Plus Dogs 23-44lbs 6-pack"
+        slug: "frontline-plus-23-44lb-6pk"
+        url: "https://www.chewy.com/frontline-plus-flea-tick-treatment/dp/36028"
+        category: "flea_tick_topical"
+        expected_price_range: [55, 90]
+
+  - name: "PetMeds"
+    slug: "petmeds"
+    rate_limit_delay_seconds: 4
+    viewport:
+      width: 1280
+      height: 900
+    products:
+      - canonical_name: "NexGard 10-24lbs 6-pack"
+        slug: "nexgard-10-24lb-6pk"
+        url: "https://www.1800petmeds.com/NexGard-prod10696.html"
+        category: "flea_tick_oral"
+        expected_price_range: [150, 220]
+      - canonical_name: "Frontline Plus Dogs 23-44lbs 6-pack"
+        slug: "frontline-plus-23-44lb-6pk"
+        url: "https://www.1800petmeds.com/Frontline+Plus+for+Dogs-prod10533.html"
+        category: "flea_tick_topical"
+        expected_price_range: [55, 90]
+
+  - name: "Own Storefront (Demo)"
+    slug: "own_storefront"
+    rate_limit_delay_seconds: 2
+    viewport:
+      width: 1280
+      height: 900
+    products:
+      - canonical_name: "NexGard 10-24lbs 6-pack"
+        slug: "nexgard-10-24lb-6pk"
+        url: "https://store.example.com/products/nexgard-10-24lbs-6-pack"
+        category: "flea_tick_oral"
+        expected_price_range: [160, 230]
+      - canonical_name: "Frontline Plus Dogs 23-44lbs 6-pack"
+        slug: "frontline-plus-23-44lb-6pk"
+        url: "https://store.example.com/products/frontline-plus-23-44lbs-6-pack"
+        category: "flea_tick_topical"
+        expected_price_range: [60, 95]
