@@ -21,3 +21,19 @@ jobs:
           cache-dependency-path: pricing_monitor/requirements.txt
       - run: pip install -r requirements.txt
       - run: pytest tests/unit tests/integration -q
+
+  prd-agent:
+    name: PRD agent tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: prd-agent
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: prd-agent/requirements.txt
+      - run: pip install -r requirements.txt
+      - run: python -m pytest -q

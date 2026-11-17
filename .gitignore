@@ -10,3 +10,4 @@ results.md
 .DS_Store
 .claude/
 client_secret*.json
+output/

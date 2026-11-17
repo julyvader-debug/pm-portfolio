@@ -2,7 +2,7 @@
 
 **Monic** · Senior Technical Product Manager · 25 years in IT (e-commerce pricing, telecom billing)
 
-This repo shows how I work as a technical PM. It covers three things: PRDs that engineers can build from, eval frameworks that decide when an AI feature is ready to ship, and a working prototype I built to test a product hypothesis.
+This repo shows how I work as a technical PM. It covers four things: PRDs that engineers can build from, an AI agent that drafts and reviews PRDs from discovery notes, eval frameworks that decide when an AI feature is ready to ship, and a working prototype I built to test a product hypothesis.
 
 All work comes from a consulting engagement with a veterinary pharmacy e-commerce company. Company names, people, internal system names, and data have been removed or replaced with placeholders. Prices and SKUs are illustrative.
 
@@ -24,6 +24,7 @@ The result was slow turnaround, rounding and margin errors, and low trust in the
 | Folder | What it is | What it shows |
 |---|---|---|
 | [`prds/`](prds/) | PRD for the new Pricing Management Tool (v3) and a scoped PRD for the VPD Fee Calculator | Turning interviews and technical sessions into P0/P1/P2 scope, user journeys, acceptance criteria, risks, and open questions |
+| [`prd-agent/`](prd-agent/) | Python CLI that turns meeting notes into a PRD, reviews it, and revises it with Claude | Encoding my PRD standards into a tool: cite every source, turn gaps into open questions, review before sprint planning |
 | [`ai-evals/`](ai-evals/) | LLM-as-judge eval suites for two AI pricing features | Defining "good enough to ship" for AI: weighted rubrics, adversarial test cases, ship/iterate/pivot thresholds |
 | [`pricing_monitor/`](pricing_monitor/) | Working Python app that tracks competitor prices with Claude | Validating a feature idea with a real prototype before asking engineering to build it |
 
@@ -42,7 +43,11 @@ Includes 10 user stories with acceptance criteria, testing requirements, success
 **[VPD Fee Calculator PRD](prds/vpd-fee-calculator/vpd-fee-calculator-prd.md)**
 A smaller, buildable slice: auto-calculate per-dose pricing for home-delivery SKUs. Each research finding is traced to its source, and the PRD names the riskiest assumption explicitly: that per-unit MAP can be derived from the parent-SKU hierarchy. The goal is to cut time to price a SKU from about 15 minutes to under 2.
 
-## 2. AI eval framework
+## 2. PRD agent
+
+**[`prd-agent/`](prd-agent/)** takes notes, transcripts, and Slack threads and runs three passes: draft a PRD in a fixed template, review it as a skeptical engineer (structured scores and findings), then revise. The key rule is that the agent may not invent facts. Every research bullet cites its source, gaps become Open Questions, and the reviewer flags any unsupported claim as critical. Includes fictional sample notes and 15 unit tests that run in CI without an API key.
+
+## 3. AI eval framework
 
 Before an AI feature ships, I define what failure looks like and test for it. Each suite contains:
 
@@ -58,7 +63,7 @@ Before an AI feature ships, I define what failure looks like and test for it. Ea
 
 The rule I hold to: **in pricing, a confident wrong number is worse than no number.** Hallucination is weighted Critical in both suites, and the pivot rule applies if the model keeps guessing missing inputs instead of refusing to calculate.
 
-## 3. Competitor pricing monitor (working prototype)
+## 4. Competitor pricing monitor (working prototype)
 
 **Hypothesis:** the company loses clinic orders to large online competitors. The cause is not price, since its contracted prices are often lower. The cause is that clinics don't see those prices at the point of ordering. To test that, we first need reliable competitor price data.
 
